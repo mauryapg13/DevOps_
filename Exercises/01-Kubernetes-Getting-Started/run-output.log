@@ -1,0 +1,29 @@
+=== kubectl run hello-k8s ===
+pod/hello-k8s created
+
+=== kubectl get pods (waiting for Running) ===
+pod/hello-k8s condition met
+NAME        READY   STATUS    RESTARTS   AGE   IP           NODE       NOMINATED NODE   READINESS GATES
+hello-k8s   1/1     Running   0          20s   10.244.0.3   minikube   <none>           <none>
+
+=== kubectl expose pod ===
+service/hello-k8s exposed
+
+=== kubectl get svc ===
+NAME        TYPE       CLUSTER-IP       EXTERNAL-IP   PORT(S)        AGE
+hello-k8s   NodePort   10.106.224.156   <none>        80:31680/TCP   1s
+
+=== minikube service hello-k8s --url ===
+http://127.0.0.1:56431
+! Because you are using a Docker driver on darwin, the terminal needs to be open to run it.
+
+=== curl http://127.0.0.1:56431 (verification) ===
+HTTP_STATUS:200
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+...
+<h1>Welcome to nginx!</h1>
+<p>If you see this page, nginx is successfully installed and working.</p>
+</html>

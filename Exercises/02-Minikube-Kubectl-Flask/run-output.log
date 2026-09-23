@@ -1,0 +1,36 @@
+=== eval $(minikube docker-env) && docker build -t flask-app . ===
+(full build log omitted here; image built successfully as flask-app:latest)
+
+=== kubectl apply -f flask-deployment.yaml ===
+deployment.apps/flask-app created
+service/flask-app-service created
+
+=== kubectl get deployments ===
+NAME        READY   UP-TO-DATE   AVAILABLE   AGE
+flask-app   1/1     1            1           2s
+
+=== kubectl get pods -l app=flask-app ===
+NAME                         READY   STATUS    RESTARTS   AGE
+flask-app-6d58f88547-7lz2c   1/1     Running   0          2s
+
+=== kubectl get services ===
+NAME                TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)           AGE
+flask-app-service   NodePort    10.99.97.157   <none>        15000:30289/TCP   2s
+kubernetes          ClusterIP   10.96.0.1      <none>        443/TCP           3m23s
+
+=== kubectl logs flask-app-6d58f88547-7lz2c ===
+ * Serving Flask app 'app'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:15000
+ * Running on http://10.244.0.4:15000
+[33mPress CTRL+C to quit[0m
+10.244.0.1 - - [23/Sep/2026 19:22:08] "GET / HTTP/1.1" 200 -
+
+=== minikube service flask-app-service --url ===
+http://127.0.0.1:56532
+
+=== curl http://127.0.0.1:56532/ ===
+Hello from Flask on Kubernetes!
+HTTP_STATUS:200
