@@ -1,0 +1,185 @@
+=== docker network create --driver bridge my-bridge-net ===
+1c9caf3ddc8d71518689ee0826ebc5cf985f8aff6b2c46d79baf8b9319be63f8
+
+=== docker network ls ===
+NETWORK ID     NAME            DRIVER    SCOPE
+662785760ccf   bridge          bridge    local
+952a77ee1229   host            host      local
+1c9caf3ddc8d   my-bridge-net   bridge    local
+95e864d46742   none            null      local
+
+=== docker build -t flask-api . 2>&1 | grep -E '^#[0-9]+ (\[|naming|DONE)|Successfully installed|ERROR' ===
+#1 [internal] load build definition from Dockerfile
+#1 DONE 0.0s
+#2 [internal] load metadata for docker.io/library/python:3.9-slim
+#2 DONE 2.7s
+#3 [internal] load .dockerignore
+#3 DONE 0.0s
+#4 [internal] load build context
+#4 DONE 0.0s
+#5 [1/6] FROM docker.io/library/python:3.9-slim@sha256:2d97f6910b16bd338d3060f261f53f144965f755599aab1acda1e13cf1731b1b
+#5 DONE 12.0s
+#5 [1/6] FROM docker.io/library/python:3.9-slim@sha256:2d97f6910b16bd338d3060f261f53f144965f755599aab1acda1e13cf1731b1b
+#5 DONE 12.4s
+#5 [1/6] FROM docker.io/library/python:3.9-slim@sha256:2d97f6910b16bd338d3060f261f53f144965f755599aab1acda1e13cf1731b1b
+#5 DONE 12.4s
+#6 [2/6] RUN apt-get update && apt-get install -y --no-install-recommends iputils-ping     && rm -rf /var/lib/apt/lists/*
+#6 DONE 8.2s
+#7 [3/6] WORKDIR /app
+#7 DONE 0.1s
+#8 [4/6] COPY requirements.txt .
+#8 DONE 0.0s
+#9 [5/6] COPY app.py .
+#9 DONE 0.0s
+#10 [6/6] RUN pip install --no-cache-dir -r requirements.txt
+#10 16.88 Successfully installed Flask-2.0.1 Jinja2-3.1.6 MarkupSafe-3.0.4 Werkzeug-2.0.3 click-8.1.8 itsdangerous-2.2.0
+#10 DONE 17.3s
+#11 naming to docker.io/library/flask-api:latest done
+#11 DONE 0.7s
+
+=== docker run -d --name mysql --net=my-bridge-net -e MYSQL_ROOT_PASSWORD=rootpass mysql:latest ===
+Unable to find image 'mysql:latest' locally
+latest: Pulling from library/mysql
+Digest: sha256:9d48c42f8341068f199116dfccb919b607c99765b5c61e549a548a43033471a4
+Status: Downloaded newer image for mysql:latest
+6b323afef3901e73bc72aa8189a3ebaeb0bd9524c9e4a0da3303f712aea54e50
+
+=== docker run -d --name redis --net=my-bridge-net redis:latest ===
+Unable to find image 'redis:latest' locally
+latest: Pulling from library/redis
+Digest: sha256:2c2dff791878316e3b083188be0d578423b24813cdda5de0e80ea4f7b3e6bfd6
+Status: Downloaded newer image for redis:latest
+c21327f8729e83fc21831775a883ca302ce7ceaed03696b02dd683775ac06f59
+
+=== docker run -d --name flask --net=my-bridge-net -p 5001:5001 flask-api ===
+d4260a750ff3be66924c6266003d6021a0875ceaaae31c546b9f18acfbabde03
+
+=== docker ps --format 'table {{.Names}}	{{.Image}}	{{.Status}}	{{.Ports}}' ===
+NAMES     IMAGE          STATUS          PORTS
+flask     flask-api      Up 8 seconds    0.0.0.0:5001->5001/tcp, [::]:5001->5001/tcp
+redis     redis:latest   Up 8 seconds    6379/tcp
+mysql     mysql:latest   Up 30 seconds   3306/tcp, 33060/tcp
+
+=== docker network inspect my-bridge-net ===
+[
+    {
+        "Name": "my-bridge-net",
+        "Id": "1c9caf3ddc8d71518689ee0826ebc5cf985f8aff6b2c46d79baf8b9319be63f8",
+        "Created": "2026-10-09T18:08:36.831052298Z",
+        "Scope": "local",
+        "Driver": "bridge",
+        "EnableIPv4": true,
+        "EnableIPv6": false,
+        "IPAM": {
+            "Driver": "default",
+            "Options": {},
+            "Config": [
+                {
+                    "Subnet": "172.18.0.0/16",
+                    "Gateway": "172.18.0.1"
+                }
+            ]
+        },
+        "Internal": false,
+        "Attachable": false,
+        "Ingress": false,
+        "ConfigFrom": {
+            "Network": ""
+        },
+        "ConfigOnly": false,
+        "Options": {
+            "com.docker.network.enable_ipv4": "true",
+            "com.docker.network.enable_ipv6": "false"
+        },
+        "Labels": {},
+        "Containers": {
+            "6b323afef3901e73bc72aa8189a3ebaeb0bd9524c9e4a0da3303f712aea54e50": {
+                "Name": "mysql",
+                "EndpointID": "f21c76eb8536af195200493c6a903aff4011280f45cb83b111f31947290cb199",
+                "MacAddress": "d2:30:18:df:83:0e",
+                "IPv4Address": "172.18.0.2/16",
+                "IPv6Address": ""
+            },
+            "c21327f8729e83fc21831775a883ca302ce7ceaed03696b02dd683775ac06f59": {
+                "Name": "redis",
+                "EndpointID": "7538762cfc9899df97616dec7ad3aec66a9ad7bdf2418bf5f9429a90b5ba0fcd",
+                "MacAddress": "46:02:32:7c:44:a2",
+                "IPv4Address": "172.18.0.3/16",
+                "IPv6Address": ""
+            },
+            "d4260a750ff3be66924c6266003d6021a0875ceaaae31c546b9f18acfbabde03": {
+                "Name": "flask",
+                "EndpointID": "dfaa64f4ab2c2a2f56ff3ebe78f2cae62e4a7295c80ce3343ebc7e01a12fce58",
+                "MacAddress": "62:97:5e:61:37:18",
+                "IPv4Address": "172.18.0.4/16",
+                "IPv6Address": ""
+            }
+        },
+        "Status": {
+            "IPAM": {
+                "Subnets": {
+                    "172.18.0.0/16": {
+                        "IPsInUse": 6,
+                        "DynamicIPsAvailable": 65530
+                    }
+                }
+            }
+        }
+    }
+]
+
+=== docker exec flask ping -c 3 mysql ===
+PING mysql (172.18.0.2) 56(84) bytes of data.
+64 bytes from mysql.my-bridge-net (172.18.0.2): icmp_seq=1 ttl=64 time=0.373 ms
+64 bytes from mysql.my-bridge-net (172.18.0.2): icmp_seq=2 ttl=64 time=0.138 ms
+64 bytes from mysql.my-bridge-net (172.18.0.2): icmp_seq=3 ttl=64 time=0.416 ms
+
+--- mysql ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2061ms
+rtt min/avg/max/mdev = 0.138/0.309/0.416/0.122 ms
+
+=== docker exec flask ping -c 3 redis ===
+PING redis (172.18.0.3) 56(84) bytes of data.
+64 bytes from redis.my-bridge-net (172.18.0.3): icmp_seq=1 ttl=64 time=0.257 ms
+64 bytes from redis.my-bridge-net (172.18.0.3): icmp_seq=2 ttl=64 time=0.122 ms
+64 bytes from redis.my-bridge-net (172.18.0.3): icmp_seq=3 ttl=64 time=0.169 ms
+
+--- redis ping statistics ---
+3 packets transmitted, 3 received, 0% packet loss, time 2065ms
+rtt min/avg/max/mdev = 0.122/0.182/0.257/0.055 ms
+
+=== docker exec flask python -c "import socket; [print(h, '->', socket.gethostbyname(h), 'port', p, 'open' if socket.create_connection((h,p),3) else '') for h,p in [('mysql',3306),('redis',6379)]]" ===
+mysql -> 172.18.0.2 port 3306 open
+redis -> 172.18.0.3 port 6379 open
+
+=== docker exec redis redis-cli -h redis ping ===
+PONG
+
+=== curl -s http://localhost:5001/about ===
+{
+  "description": "This is a simple REST API built with Flask.", 
+  "name": "Simple REST API", 
+  "version": "1.0"
+}
+
+--- contrast: default 'bridge' network has no embedded DNS for container names ---
+=== docker run --rm --net=bridge flask-api ping -c 1 -W 2 mysql ===
+ping: mysql: Name or service not known
+
+=== docker stop mysql redis flask && docker rm mysql redis flask ===
+mysql
+redis
+flask
+mysql
+redis
+flask
+
+=== docker network rm my-bridge-net ===
+my-bridge-net
+
+=== docker network ls ===
+NETWORK ID     NAME      DRIVER    SCOPE
+662785760ccf   bridge    bridge    local
+952a77ee1229   host      host      local
+95e864d46742   none      null      local
+
