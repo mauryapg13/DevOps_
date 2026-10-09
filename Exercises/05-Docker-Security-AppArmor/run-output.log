@@ -1,0 +1,139 @@
+### Environment: Lima VM, Ubuntu 26.04.1 LTS, kernel 7.0.0-34-generic, rootful Docker 29.9.0
+
+=== cat /sys/kernel/security/lsm; echo ===
+lockdown,capability,landlock,yama,apparmor,ima,evm
+
+### Task 2: build image
+=== sudo docker build -t flask-apparmor . 2>&1 | grep -E '^#[0-9]+ (\[[0-9]|naming|DONE)|Successfully installed' | uniq ===
+#1 DONE 0.0s
+#2 DONE 0.0s
+#3 DONE 0.0s
+#4 [1/4] FROM docker.io/library/python:3.8-slim@sha256:1d52838af602b4b5a831beb13a0e4d073280665ea7be7f69ce2382f29c5a613f
+#4 DONE 0.0s
+#5 DONE 0.0s
+#6 [2/4] WORKDIR /app
+#7 [3/4] COPY . /app
+#7 DONE 0.0s
+#8 [4/4] RUN pip install flask
+#8 7.504 Successfully installed Jinja2-3.1.6 MarkupSafe-2.1.5 Werkzeug-3.0.6 blinker-1.8.2 click-8.1.8 flask-3.0.3 importlib-metadata-8.5.0 itsdangerous-2.2.0 zipp-3.20.2
+#8 DONE 12.4s
+#9 naming to docker.io/library/flask-apparmor:latest done
+#9 DONE 0.5s
+
+### Task 3: install + load profile
+=== sudo cp my-apparmor-profile /etc/apparmor.d/my-apparmor-profile ===
+
+=== sudo apparmor_parser -r /etc/apparmor.d/my-apparmor-profile ===
+
+=== sudo aa-status | grep -E 'my-apparmor-profile|docker-default' ===
+   docker-default
+   my-apparmor-profile
+
+=== sudo docker run -d --name flask-aa --security-opt=apparmor=my-apparmor-profile -p 5000:5000 flask-apparmor ===
+933a0b9dfd5c51710a11b3a19deb25644c1013b41d441b029a00d41c699c507a
+
+=== sudo docker ps --filter name=flask-aa --format '{{.Names}} {{.Status}} {{.Ports}}' ===
+flask-aa Up 4 seconds 0.0.0.0:5000->5000/tcp, [::]:5000->5000/tcp
+
+=== curl -s http://localhost:5000/ ===
+Hello, this is a secure Flask application running inside a Docker container!
+=== sudo docker inspect flask-aa --format 'AppArmorProfile={{.AppArmorProfile}} SecurityOpt={{.HostConfig.SecurityOpt}}' ===
+AppArmorProfile=my-apparmor-profile SecurityOpt=[apparmor=my-apparmor-profile]
+
+=== sudo docker exec flask-aa cat /proc/1/attr/current ===
+my-apparmor-profile (enforce)
+
+=== sudo docker exec flask-aa cat /etc/passwd ===
+cat: /etc/passwd: Permission denied
+
+=== sudo docker exec flask-aa /bin/bash -c id ===
+/bin/bash: line 1: /usr/bin/id: Permission denied
+
+=== sudo docker exec flask-aa python -c "import subprocess; subprocess.run(['/bin/ls'])" ===
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "/usr/local/lib/python3.8/subprocess.py", line 493, in run
+    with Popen(*popenargs, **kwargs) as process:
+  File "/usr/local/lib/python3.8/subprocess.py", line 858, in __init__
+    self._execute_child(args, executable, preexec_fn, close_fds,
+  File "/usr/local/lib/python3.8/subprocess.py", line 1720, in _execute_child
+    raise child_exception_type(errno_num, err_msg, err_filename)
+PermissionError: [Errno 13] Permission denied: '/bin/ls'
+
+=== sudo docker exec flask-aa python -c "open('/etc/passwd').read()" ===
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+PermissionError: [Errno 13] Permission denied: '/etc/passwd'
+
+=== sudo docker exec flask-aa python -c "open('/var/x','w')" ===
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+PermissionError: [Errno 13] Permission denied: '/var/x'
+
+=== sudo docker exec flask-aa python -c "print(open('/app/app.py').readline())" ===
+from flask import Flask
+
+
+=== sudo docker rm -f flask-aa ===
+flask-aa
+
+### Task 4: apply_apparmor.py (Docker SDK)
+=== sudo python3 apply_apparmor.py ===
+Building image from Dockerfile...
+[INFO] Step 1/6 : FROM python:3.8-slim
+[INFO] ---> 1d52838af602
+[INFO] Step 2/6 : WORKDIR /app
+[INFO] ---> Using cache
+[INFO] ---> 39b29eab342d
+[INFO] Step 3/6 : COPY . /app
+[INFO] ---> 5f335e86d558
+[INFO] Step 4/6 : RUN pip install flask
+[INFO] ---> Running in b5fd51cd5561
+[INFO] Successfully installed Jinja2-3.1.6 MarkupSafe-2.1.5 Werkzeug-3.0.6 blinker-1.8.2 click-8.1.8 flask-3.0.3 importlib-metadata-8.5.0 itsdangerous-2.2.0 zipp-3.20.2
+[INFO] ---> Removed intermediate container b5fd51cd5561
+[INFO] ---> 5c43cb442ea6
+[INFO] Step 5/6 : EXPOSE 5000
+[INFO] ---> Running in 8380a7fa1af1
+[INFO] ---> Removed intermediate container 8380a7fa1af1
+[INFO] ---> f343573ce621
+[INFO] Step 6/6 : CMD ["python", "app.py"]
+[INFO] ---> Running in 02f70dbadd7f
+[INFO] ---> Removed intermediate container 02f70dbadd7f
+[INFO] ---> 14aba82eae12
+[INFO] Successfully built 14aba82eae12
+[INFO] Successfully tagged flask-apparmor:latest
+
+Running container with AppArmor profile...
+Container started: 7693623d4e20
+
+Inspecting container to verify AppArmor profile...
+AppArmor profile applied: ['apparmor=my-apparmor-profile']
+AppArmorProfile field: my-apparmor-profile
+
+Stopping the container...
+
+### Task 5: test_restricted_actions.py
+=== sudo python3 test_restricted_actions.py ===
+--- With my-apparmor-profile ---
+Container started: ea4568296b35 (security_opt=['apparmor=my-apparmor-profile'])
+Attempt to read /etc/passwd: Exit Code 1, Output: cat: /etc/passwd: Permission denied
+Attempt to execute /bin/bash: Exit Code 0, Output: 
+Attempt to run 'id' from /bin/bash: Exit Code 126, Output: /bin/bash: line 1: /usr/bin/id: Permission denied
+Attempt to spawn /bin/bash from python: Exit Code 1, Output: PermissionError: [Errno 13] Permission denied: '/bin/bash'
+Attempt to read /etc/passwd via python: Exit Code 1, Output: PermissionError: [Errno 13] Permission denied: '/etc/passwd'
+Attempt to read /app/app.py via python: Exit Code 0, Output: from flask import Flask
+Container stopped
+
+--- Control: Docker's default profile ---
+Container started: 59a5ded537a4 (security_opt=[])
+Attempt to read /etc/passwd: Exit Code 0, Output: root:x:0:0:root:/root:/bin/bash
+daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin
+
+Attempt to execute /bin/bash: Exit Code 0, Output: 
+Attempt to run 'id' from /bin/bash: Exit Code 0, Output: uid=0(root) gid=0(root) groups=0(root)
+Attempt to spawn /bin/bash from python: Exit Code 0, Output: uid=0(root) gid=0(root) groups=0(root)
+Attempt to read /etc/passwd via python: Exit Code 0, Output: root:x:0:0:root:/root:/bin/bash
+Attempt to read /app/app.py via python: Exit Code 0, Output: from flask import Flask
+Container stopped
+
+

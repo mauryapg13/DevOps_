@@ -1,0 +1,36 @@
+#include <tunables/global>
+
+# Named profile so it can be selected with --security-opt apparmor=my-apparmor-profile.
+# attach_disconnected/mediate_deleted are needed for container mount namespaces (same as docker-default).
+profile my-apparmor-profile flags=(attach_disconnected,mediate_deleted) {
+    #include <abstractions/base>
+
+    # Everything not denied below is allowed, so the Flask app itself can start
+    file,
+    umount,
+    signal,
+
+    # Deny access to sensitive system files
+    deny /etc/** r,
+    deny /var/** rw,
+
+    # Allow Flask app to bind to port 5000
+    network inet stream,
+    network inet6 stream,
+    # Werkzeug opens a UDP socket at startup (host='0.0.0.0') to print the LAN address
+    network inet dgram,
+    network inet6 dgram,
+    network unix,
+
+    # Permissions to the application directory
+    /app/** rwk,
+
+    # Deny execution of any binaries in /bin or /usr/bin
+    # (the source used "rmix"; the "i" exec qualifier is invalid in deny rules and the parser rejects it)
+    deny /bin/** mrx,
+    deny /usr/bin/** mrx,
+
+    # Capability restrictions
+    capability net_bind_service,
+    deny capability sys_admin,
+}
