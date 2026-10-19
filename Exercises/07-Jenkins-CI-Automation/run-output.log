@@ -1,0 +1,99 @@
+=== docker run -d --name jenkins -p 8080:8080 -p 50000:50000 -v jenkins_home:/var/jenkins_home jenkins/jenkins:lts 2>&1 | grep -vE ': (Pulling fs layer|Download complete|Pull complete|Waiting|Verifying Checksum)$' ===
+Unable to find image 'jenkins/jenkins:lts' locally
+lts: Pulling from jenkins/jenkins
+Digest: sha256:a660310e39ade10631f774bacd5219de767dfd08947ea5c32a739b5e5bb382c1
+Status: Downloaded newer image for jenkins/jenkins:lts
+9c528cc88468b6a42a965893848310029aeac041ff4fe8ec2de2d6a79ad2ad19
+
+=== docker ps --filter name=jenkins --format 'table {{.ID}}	{{.Image}}	{{.Status}}	{{.Ports}}' ===
+CONTAINER ID   IMAGE                 STATUS         PORTS
+9c528cc88468   jenkins/jenkins:lts   Up 3 seconds   0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp, 0.0.0.0:50000->50000/tcp, [::]:50000->50000/tcp
+
+=== docker exec jenkins java -jar /usr/share/jenkins/jenkins.war --version ===
+2.580.1
+
+=== docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword ===
+<redacted — 32-char hex initial admin password>
+
+=== curl -s -o /dev/null -w 'GET /login -> HTTP %{http_code}, X-Jenkins: ' http://localhost:8080/login; curl -sI http://localhost:8080/login | grep -i '^x-jenkins:' | cut -d' ' -f2 ===
+GET /login -> HTTP 503, X-Jenkins: 
+=== curl -s http://localhost:8080/login | grep -o '<title>[^<]*</title>' ===
+<title>Starting Jenkins</title>
+
+=== curl -s -o /dev/null -w 'GET /login -> HTTP %{http_code}
+' http://localhost:8080/login; curl -s http://localhost:8080/login | grep -o '<title>[^<]*</title>' ===
+GET /login -> HTTP 200
+<title>Sign in - Jenkins</title>
+<title>Jenkins - Jenkins</title>
+
+### Unlock: authenticate as admin with the initial password
+=== curl -s -u admin:$PW http://localhost:8080/whoAmI/api/json | python3 -c 'import json,sys; d=json.load(sys.stdin); print("name:", d["name"], "authenticated:", d["authenticated"])' ===
+name: admin authenticated: True
+
+### Instance configuration: set Jenkins URL (wizard step 'Instance Configuration')
+=== jenkins-script <<'G'
+def loc = jenkins.model.JenkinsLocationConfiguration.get()
+loc.url = 'http://localhost:8080/'
+loc.save()
+println "Jenkins URL = " + loc.url
+G ===
+Jenkins URL = http://localhost:8080/
+
+=== jenkins-cli version ===
+2.580.1
+
+=== jenkins-cli who-am-i ===
+Authenticated as: admin
+Authorities:
+  authenticated
+  FACTOR_PASSWORD
+
+### Install suggested plugins (the set the setup wizard proposes)
+=== jenkins-cli install-plugin cloudbees-folder antisamy-markup-formatter build-timeout credentials-binding timestamper ws-cleanup workflow-aggregator github-branch-source pipeline-github-lib pipeline-graph-view git ssh-slaves matrix-auth pam-auth ldap email-ext mailer dark-theme -restart 2>&1 | grep -E '^Installing [a-z-]+ from update center' ; echo '(restarting Jenkins to load plugins)' ===
+Installing cloudbees-folder from update center
+Installing antisamy-markup-formatter from update center
+Installing build-timeout from update center
+Installing credentials-binding from update center
+Installing timestamper from update center
+Installing ws-cleanup from update center
+Installing workflow-aggregator from update center
+Installing github-branch-source from update center
+Installing pipeline-github-lib from update center
+Installing pipeline-graph-view from update center
+Installing git from update center
+Installing ssh-slaves from update center
+Installing matrix-auth from update center
+Installing pam-auth from update center
+Installing ldap from update center
+Installing email-ext from update center
+Installing mailer from update center
+Installing dark-theme from update center
+(restarting Jenkins to load plugins)
+
+=== docker start jenkins ===
+# Jenkins' restart exits the JVM, which stops the container (no restart policy), so start it again
+jenkins
+
+### Mark setup wizard complete
+=== jenkins-script <<'G'
+jenkins.model.Jenkins.get().setInstallState(jenkins.install.InstallState.INITIAL_SETUP_COMPLETED)
+println 'InstallState = ' + jenkins.model.Jenkins.get().installState
+G ===
+InstallState = InstallState (RUNNING)
+
+=== jenkins-cli list-plugins | awk '{print $1}' | grep -xE 'git|workflow-aggregator|workflow-job|pipeline-graph-view|credentials-binding|timestamper|github-branch-source|email-ext' | sort ===
+credentials-binding
+email-ext
+git
+github-branch-source
+pipeline-graph-view
+timestamper
+workflow-aggregator
+workflow-job
+
+=== jenkins-cli list-plugins | wc -l | xargs echo 'total plugins installed (incl. dependencies):' ===
+total plugins installed (incl. dependencies): 91
+
+=== curl -s -u admin:$JENKINS_PW http://localhost:8080/api/json | python3 -c 'import json,sys; d=json.load(sys.stdin); print("mode:", d["mode"], "| executors:", d["numExecutors"], "| jobs:", len(d["jobs"]))' ===
+mode: NORMAL | executors: 2 | jobs: 0
+
