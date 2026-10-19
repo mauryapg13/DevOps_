@@ -1,0 +1,287 @@
+### Step 5a/5b: run Jenkins with the Docker CLI (jenkins/Dockerfile), host Docker socket and this folder mounted
+=== docker build -q -t jenkins-docker jenkins/ ===
+sha256:4bfd82aef9828dabfd9bca0864fde6ca6f47bc620e01e1a6e9e8766ac0473b91
+
+=== docker rm -f jenkins ===
+jenkins
+
+=== docker run -d --name jenkins -p 8080:8080 -p 50000:50000 -v jenkins_home:/var/jenkins_home -v /var/run/docker.sock:/var/run/docker.sock --group-add 0 -v "$PWD":/delivery_monitoring:ro jenkins-docker ===
+1de25238021c031c75a16daa920e5b435043eb45902ce0814960aa00c0918c7b
+
+=== docker exec jenkins docker version --format 'client {{.Client.Version}} -> server {{.Server.Version}}' ===
+client 29.9.1 -> server 29.3.1
+
+=== docker exec jenkins ls /delivery_monitoring ===
+Dockerfile
+Jenkinsfile
+alert_rules.yml
+delivery_metrics.py
+grafana
+jenkins
+prometheus.yml
+run-output.log
+
+### Create pipeline job (New Item > Pipeline > Pipeline script = Jenkinsfile)
+=== jenkins-cli create-job delivery-monitoring < delivery-job.xml && echo created; jenkins-cli list-jobs ===
+created
+delivery-monitoring
+HelloWorld
+
+### Build the pipeline
+=== jenkins-cli build delivery-monitoring -s -v ===
+Started delivery-monitoring #1
+Started from command line by admin
+[Pipeline] Start of Pipeline
+[Pipeline] node
+Running on Jenkins in /var/jenkins_home/workspace/delivery-monitoring
+[Pipeline] {
+[Pipeline] withEnv
+[Pipeline] {
+[Pipeline] stage
+[Pipeline] { (Pre-check Docker)
+[Pipeline] script
+[Pipeline] {
+[Pipeline] sh
++ docker --version
+[Pipeline] sh
++ docker info
+[Pipeline] echo
+Docker is available and running: Docker version 29.9.1, build dfc520d
+[Pipeline] }
+[Pipeline] // script
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Setup Workspace)
+[Pipeline] sh
++ cp -r /delivery_monitoring/delivery_metrics.py /delivery_monitoring/Dockerfile /delivery_monitoring/prometheus.yml /delivery_monitoring/alert_rules.yml /delivery_monitoring/grafana /var/jenkins_home/workspace/delivery-monitoring/
++ ls -R /var/jenkins_home/workspace/delivery-monitoring
+/var/jenkins_home/workspace/delivery-monitoring:
+Dockerfile
+alert_rules.yml
+delivery_metrics.py
+grafana
+prometheus.yml
+
+/var/jenkins_home/workspace/delivery-monitoring/grafana:
+provisioning
+
+/var/jenkins_home/workspace/delivery-monitoring/grafana/provisioning:
+dashboards
+datasources
+
+/var/jenkins_home/workspace/delivery-monitoring/grafana/provisioning/dashboards:
+dashboards.yml
+delivery-monitoring.json
+
+/var/jenkins_home/workspace/delivery-monitoring/grafana/provisioning/datasources:
+prometheus.yml
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Cleanup Previous Run)
+[Pipeline] sh
++ docker rm -f delivery_metrics prometheus grafana
++ docker network create delivery-net
+032dd63e4bf00c9d130804996a098f11dceeca0e5ef33f02c5224d7ebbcdd159
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Build Docker Image)
+[Pipeline] sh
++ docker build -t delivery_metrics .
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 206B done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/python:3.12-slim
+#2 DONE 2.7s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 2B done
+#3 DONE 0.0s
+
+#4 [internal] load build context
+#4 transferring context: 1.68kB done
+#4 DONE 0.0s
+
+#5 [1/4] FROM docker.io/library/python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
+#5 resolve docker.io/library/python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1 done
+#5 DONE 3.0s
+
+#5 [1/4] FROM docker.io/library/python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
+#5 DONE 3.0s
+
+#6 [2/4] WORKDIR /app
+#6 DONE 0.1s
+
+#7 [3/4] RUN pip install --no-cache-dir prometheus-client
+#7 0.770 Collecting prometheus-client
+#7 0.873   Downloading prometheus_client-0.26.0-py3-none-any.whl.metadata (2.1 kB)
+#7 0.903 Downloading prometheus_client-0.26.0-py3-none-any.whl (64 kB)
+#7 0.939 Installing collected packages: prometheus-client
+#7 0.971 Successfully installed prometheus-client-0.26.0
+#7 0.971 WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+#7 1.050 
+#7 1.050 [notice] A new release of pip is available: 25.0.1 -> 26.2.1
+#7 1.050 [notice] To update, run: pip install --upgrade pip
+#7 DONE 1.1s
+
+#8 [4/4] COPY delivery_metrics.py .
+#8 DONE 0.0s
+
+#9 exporting to image
+#9 exporting layers
+#9 exporting layers 0.2s done
+#9 exporting manifest sha256:c965d06439f843ddf700216a6f38b13b1164bf93bcfdfe730c7ba9fc4f46739b
+#9 exporting manifest sha256:c965d06439f843ddf700216a6f38b13b1164bf93bcfdfe730c7ba9fc4f46739b done
+#9 exporting config sha256:843a2244526fbfef35aef45e5e3df4728258600774c2f65ee66b5735b40f635d done
+#9 exporting attestation manifest sha256:7c617858c19fc8db061bb70c1e9693d8abb4bf33c05b914a6d0b20554d67211e done
+#9 exporting manifest list sha256:00e04fbe1672688b5b6fbb72619d8e9119211c2b6b2085e9b05e0a3ce2e63501 done
+#9 naming to docker.io/library/delivery_metrics:latest done
+#9 unpacking to docker.io/library/delivery_metrics:latest 0.0s done
+#9 DONE 0.3s
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Run Application)
+[Pipeline] sh
++ docker run -d -p 8000:8000 --name delivery_metrics --network delivery-net delivery_metrics
+8901668f68d08249264638062b696c98c9134aca644ed652dbf84afda04fea77
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Run Prometheus & Grafana)
+[Pipeline] sh
++ docker create --name prometheus -p 9090:9090 --network delivery-net prom/prometheus
+Unable to find image 'prom/prometheus:latest' locally
+latest: Pulling from prom/prometheus
+Digest: sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
+Status: Downloaded newer image for prom/prometheus:latest
+1219aec6b0c254d535cb1792dd69f5294470a8f9e76efd11d1466012793b9c57
++ docker cp prometheus.yml prometheus:/etc/prometheus/prometheus.yml
++ docker cp alert_rules.yml prometheus:/etc/prometheus/alert_rules.yml
++ docker start prometheus
+prometheus
++ docker create --name grafana -p 3000:3000 --network delivery-net -e GF_AUTH_ANONYMOUS_ENABLED=true -e GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer grafana/grafana
+Unable to find image 'grafana/grafana:latest' locally
+latest: Pulling from grafana/grafana
+Digest: sha256:dbbc38ea21103cefb50396340cd88afec779c7e070b0a7bf5a75b4ce46651d3f
+Status: Downloaded newer image for grafana/grafana:latest
+61e2a3593027fc3c58d729b11d96213c1efdcd749e51ebdb82f26357250d2709
++ docker cp grafana/provisioning/. grafana:/etc/grafana/provisioning/
++ docker start grafana
+grafana
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Verify)
+[Pipeline] sh
++ H=host.docker.internal
++ seq 1 30
++ curl -sf http://host.docker.internal:9090/-/ready
++ curl -sf http://host.docker.internal:3000/api/health
++ sleep 2
++ curl -sf http://host.docker.internal:9090/-/ready
++ curl -sf http://host.docker.internal:3000/api/health
++ sleep 2
++ curl -sf http://host.docker.internal:9090/-/ready
++ curl -sf http://host.docker.internal:3000/api/health
++ break
++ echo --- app /metrics ---
+--- app /metrics ---
++ curl -s http://host.docker.internal:8000/metrics
++ grep -E ^(total|pending|on_the_way|average)_
+total_deliveries 58.0
+pending_deliveries 12.0
+on_the_way_deliveries 12.0
+average_delivery_time_count 130.0
+average_delivery_time_sum 3893.8319409584337
+average_delivery_time_created 1.7924403593766234e+09
++ echo --- prometheus ---
+--- prometheus ---
++ curl -s http://host.docker.internal:9090/-/ready
+Prometheus Server is Ready.
++ echo --- grafana health ---
+--- grafana health ---
++ curl -s http://host.docker.internal:3000/api/health
+{
+  "database": "ok",
+  "version": "13.2.4",
+  "commit": "0e79aef9d91abf3bdadae9af15763029072fb45b"
+}
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] }
+[Pipeline] // withEnv
+[Pipeline] }
+[Pipeline] // node
+[Pipeline] End of Pipeline
+Finished: SUCCESS
+Completed delivery-monitoring #1 : SUCCESS
+
+### Prometheus: targets, queries, alerts
+=== docker ps --format 'table {{.Names}}	{{.Image}}	{{.Status}}	{{.Ports}}' --filter network=delivery-net ===
+NAMES              IMAGE              STATUS          PORTS
+grafana            grafana/grafana    Up 45 seconds   0.0.0.0:3000->3000/tcp, [::]:3000->3000/tcp
+prometheus         prom/prometheus    Up 2 minutes    0.0.0.0:9090->9090/tcp, [::]:9090->9090/tcp
+delivery_metrics   delivery_metrics   Up 2 minutes    0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
+
+=== docker logs --tail 5 delivery_metrics ===
+[DEBUG] Total deliveries: 74
+[DEBUG] Pending deliveries: 11
+[DEBUG] On-the-way deliveries: 6
+[DEBUG] Average delivery time: 28.12 seconds
+[INFO] Sleeping for 1 seconds...
+
+=== curl -s localhost:9090/api/v1/targets | python3 -c 'import json,sys; [print(t["labels"]["job"], t["scrapeUrl"], t["health"]) for t in json.load(sys.stdin)["data"]["activeTargets"]]' ===
+delivery_service http://delivery_metrics:8000/metrics up
+prometheus http://localhost:9090/metrics up
+
+=== Q total_deliveries; Q pending_deliveries; Q on_the_way_deliveries; Q 'average_delivery_time_sum / average_delivery_time_count' ===
+total_deliveries = 74
+pending_deliveries = 10
+on_the_way_deliveries = 16
+average_delivery_time_sum / average_delivery_time_count = 29.808407288232356
+
+=== curl -s localhost:9090/api/v1/rules | python3 -c 'import json,sys; [print(r["name"], "|", r["query"], "| state:", r["state"], "| health:", r["health"]) for g in json.load(sys.stdin)["data"]["groups"] for r in g["rules"]]' ===
+HighPendingDeliveries | pending_deliveries > 10 | state: firing | health: ok
+HighAverageDeliveryTime | (average_delivery_time_sum / average_delivery_time_count) > 30 | state: inactive | health: ok
+
+=== curl -s localhost:9090/api/v1/alerts | python3 -c 'import json,sys; [print(a["labels"]["alertname"], a["labels"]["severity"], a["state"], "value="+a["value"]) for a in json.load(sys.stdin)["data"]["alerts"]] or print("(none)")' ===
+HighPendingDeliveries warning firing value=1.8e+01
+
+### Grafana: provisioned data source + dashboard
+=== curl -s -u admin:admin localhost:3000/api/datasources | python3 -c 'import json,sys; [print(d["name"], d["type"], d["url"], "default" if d["isDefault"] else "") for d in json.load(sys.stdin)]' ===
+Prometheus prometheus http://prometheus:9090 default
+
+=== curl -s -u admin:admin localhost:3000/api/datasources/uid/prometheus/health ===
+{"details":{"application":"Prometheus","features":{"rulerApiEnabled":false}},"message":"Successfully queried the Prometheus API.","status":"OK"}
+=== curl -s -u admin:admin localhost:3000/api/dashboards/uid/delivery-monitoring | python3 -c 'import json,sys; d=json.load(sys.stdin)["dashboard"]; print(d["title"]); [print("  panel:", p["title"], "->", p["targets"][0]["expr"]) for p in d["panels"]]' ===
+Delivery Monitoring
+  panel: Total Deliveries -> total_deliveries
+  panel: Pending Deliveries -> pending_deliveries
+  panel: On-the-Way Deliveries -> on_the_way_deliveries
+  panel: Average Delivery Time -> average_delivery_time_sum / average_delivery_time_count
+
+### Step 6: simulate alerts — restart the app with pending deliveries in 50-100
+=== docker rm -f delivery_metrics && docker run -d -p 8000:8000 --name delivery_metrics --network delivery-net -e PENDING_MIN=50 -e PENDING_MAX=100 delivery_metrics ===
+delivery_metrics
+85bdc5207ca69e99bd6bcb945c22768a288072362d93b01f4e46d8de0bb84823
+
+=== docker logs --tail 5 delivery_metrics ===
+[DEBUG] Total deliveries: 167
+[DEBUG] Pending deliveries: 95
+[DEBUG] On-the-way deliveries: 13
+[DEBUG] Average delivery time: 25.96 seconds
+[INFO] Sleeping for 1 seconds...
+
+=== curl -s --data-urlencode 'query=max_over_time(pending_deliveries[1m])' localhost:9090/api/v1/query | python3 -c 'import json,sys; print("max pending (last 1m) =", json.load(sys.stdin)["data"]["result"][0]["value"][1])' ===
+max pending (last 1m) = 95
+
+=== curl -s localhost:9090/api/v1/alerts | python3 -c 'import json,sys; [print(a["labels"]["alertname"], a["labels"]["severity"], a["state"], "activeAt="+a["activeAt"][:19], "value="+a["value"]) for a in json.load(sys.stdin)["data"]["alerts"]] or print("(none)")' ===
+HighPendingDeliveries warning firing activeAt=2026-10-19T20:08:58 value=6.2e+01
+HighAverageDeliveryTime critical firing activeAt=2026-10-19T20:10:23 value=3.0695105598860895e+01
+

@@ -1,0 +1,94 @@
+pipeline {
+    agent any
+    environment {
+        // This directory is mounted read-only into the Jenkins container (see README)
+        LOCAL_SOURCE_PATH = '/delivery_monitoring'
+        NET = 'delivery-net'
+    }
+    stages {
+        stage('Pre-check Docker') {
+            steps {
+                script {
+                    try {
+                        // Check if Docker is installed
+                        def dockerVersion = sh(script: 'docker --version', returnStdout: true).trim()
+                        if (!dockerVersion) {
+                            error "Docker is not installed or not in the PATH. Please install Docker."
+                        }
+
+                        // Check if Docker daemon is running
+                        def dockerInfo = sh(script: 'docker info > /dev/null', returnStatus: true)
+                        if (dockerInfo != 0) {
+                            error "Docker daemon is not running. Please start the Docker service."
+                        }
+
+                        echo "Docker is available and running: ${dockerVersion}"
+                    } catch (Exception e) {
+                        error "Pre-check failed: ${e.message}"
+                    }
+                }
+            }
+        }
+        stage('Setup Workspace') {
+            steps {
+                // Copy necessary files into the Jenkins workspace
+                sh '''
+                cp -r ${LOCAL_SOURCE_PATH}/delivery_metrics.py ${LOCAL_SOURCE_PATH}/Dockerfile \
+                      ${LOCAL_SOURCE_PATH}/prometheus.yml ${LOCAL_SOURCE_PATH}/alert_rules.yml \
+                      ${LOCAL_SOURCE_PATH}/grafana ${WORKSPACE}/
+                ls -R ${WORKSPACE}
+                '''
+            }
+        }
+        stage('Cleanup Previous Run') {
+            steps {
+                sh '''
+                docker rm -f delivery_metrics prometheus grafana 2>/dev/null || true
+                docker network create ${NET} 2>/dev/null || true
+                '''
+            }
+        }
+        stage('Build Docker Image') {
+            steps {
+                sh 'docker build -t delivery_metrics .'
+            }
+        }
+        stage('Run Application') {
+            steps {
+                sh 'docker run -d -p 8000:8000 --name delivery_metrics --network ${NET} delivery_metrics'
+            }
+        }
+        stage('Run Prometheus & Grafana') {
+            steps {
+                // Jenkins runs in a container, so $WORKSPACE is not a host path and can't be
+                // bind-mounted; create the containers, docker cp the config in, then start them.
+                sh '''
+                docker create --name prometheus -p 9090:9090 --network ${NET} prom/prometheus
+                docker cp prometheus.yml prometheus:/etc/prometheus/prometheus.yml
+                docker cp alert_rules.yml prometheus:/etc/prometheus/alert_rules.yml
+                docker start prometheus
+
+                docker create --name grafana -p 3000:3000 --network ${NET} \
+                  -e GF_AUTH_ANONYMOUS_ENABLED=true -e GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer \
+                  grafana/grafana
+                docker cp grafana/provisioning/. grafana:/etc/grafana/provisioning/
+                docker start grafana
+                '''
+            }
+        }
+        stage('Verify') {
+            steps {
+                sh '''
+                H=host.docker.internal
+                for i in $(seq 1 30); do
+                  curl -sf http://$H:9090/-/ready > /dev/null && curl -sf http://$H:3000/api/health > /dev/null && break
+                  sleep 2
+                done
+                echo "--- app /metrics ---";   curl -s http://$H:8000/metrics | grep -E '^(total|pending|on_the_way|average)_'
+                echo "--- prometheus ---";     curl -s http://$H:9090/-/ready
+                echo "--- grafana health ---"; curl -s http://$H:3000/api/health
+                '''
+            }
+        }
+    }
+}
