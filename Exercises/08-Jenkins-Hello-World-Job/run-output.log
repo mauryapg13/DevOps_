@@ -1,0 +1,82 @@
+### Step 1: hello-world.sh pushed to https://github.com/mauryapg13/devops-sample-code
+=== cd devops-sample-code && git log --oneline && git ls-files -s hello-world.sh && cat hello-world.sh ===
+f69872d Add hello-world.sh
+100755 83d3efe765e2428acdfb2ef470e731e402f7297f 0	hello-world.sh
+#!/bin/bash
+echo "Hello, Jenkins!"
+
+=== gh repo view mauryapg13/devops-sample-code --json nameWithOwner,description,visibility,url -q '"\(.nameWithOwner) | \(.visibility) | \(.description) | \(.url)"' ===
+mauryapg13/devops-sample-code | PUBLIC | A demo repository for Jenkins scripting. | https://github.com/mauryapg13/devops-sample-code
+
+=== curl -s https://raw.githubusercontent.com/mauryapg13/devops-sample-code/main/hello-world.sh ===
+#!/bin/bash
+echo "Hello, Jenkins!"
+
+### Steps 2-3: create the HelloWorld freestyle job (Git SCM + Execute shell)
+=== jenkins-cli create-job HelloWorld < config.xml && echo created ===
+created
+
+=== jenkins-cli list-jobs ===
+HelloWorld
+
+### Step 4: Build Now
+=== jenkins-cli build HelloWorld -s -v ===
+Started HelloWorld #1
+Started from command line by admin
+Running as SYSTEM
+Building in workspace /var/jenkins_home/workspace/HelloWorld
+The recommended git tool is: NONE
+No credentials specified
+Cloning the remote Git repository
+Cloning repository https://github.com/mauryapg13/devops-sample-code.git
+ > git init /var/jenkins_home/workspace/HelloWorld # timeout=10
+Fetching upstream changes from https://github.com/mauryapg13/devops-sample-code.git
+ > git --version # timeout=10
+ > git --version # 'git version 2.47.3'
+ > git fetch --tags --force --progress -- https://github.com/mauryapg13/devops-sample-code.git +refs/heads/*:refs/remotes/origin/* # timeout=10
+ > git config remote.origin.url https://github.com/mauryapg13/devops-sample-code.git # timeout=10
+ > git config --add remote.origin.fetch +refs/heads/*:refs/remotes/origin/* # timeout=10
+Avoid second fetch
+ > git rev-parse refs/remotes/origin/main^{commit} # timeout=10
+Checking out Revision f69872d94efbf06a911927e04269d48d2d67d8fb (refs/remotes/origin/main)
+ > git config core.sparsecheckout # timeout=10
+ > git checkout -f f69872d94efbf06a911927e04269d48d2d67d8fb # timeout=10
+Commit message: "Add hello-world.sh"
+First time build. Skipping changelog.
+[HelloWorld] $ /bin/sh -xe /tmp/jenkins11368160796557376858.sh
++ sh hello-world.sh
+Hello, Jenkins!
+Finished: SUCCESS
+Completed HelloWorld #1 : SUCCESS
+
+### Step 5: console output of build #1
+=== jenkins-cli console HelloWorld 1 ===
+Started from command line by admin
+Running as SYSTEM
+Building in workspace /var/jenkins_home/workspace/HelloWorld
+The recommended git tool is: NONE
+No credentials specified
+Cloning the remote Git repository
+Cloning repository https://github.com/mauryapg13/devops-sample-code.git
+ > git init /var/jenkins_home/workspace/HelloWorld # timeout=10
+Fetching upstream changes from https://github.com/mauryapg13/devops-sample-code.git
+ > git --version # timeout=10
+ > git --version # 'git version 2.47.3'
+ > git fetch --tags --force --progress -- https://github.com/mauryapg13/devops-sample-code.git +refs/heads/*:refs/remotes/origin/* # timeout=10
+ > git config remote.origin.url https://github.com/mauryapg13/devops-sample-code.git # timeout=10
+ > git config --add remote.origin.fetch +refs/heads/*:refs/remotes/origin/* # timeout=10
+Avoid second fetch
+ > git rev-parse refs/remotes/origin/main^{commit} # timeout=10
+Checking out Revision f69872d94efbf06a911927e04269d48d2d67d8fb (refs/remotes/origin/main)
+ > git config core.sparsecheckout # timeout=10
+ > git checkout -f f69872d94efbf06a911927e04269d48d2d67d8fb # timeout=10
+Commit message: "Add hello-world.sh"
+First time build. Skipping changelog.
+[HelloWorld] $ /bin/sh -xe /tmp/jenkins11368160796557376858.sh
++ sh hello-world.sh
+Hello, Jenkins!
+Finished: SUCCESS
+
+=== curl -s -u admin:$JENKINS_PW http://localhost:8080/job/HelloWorld/lastBuild/api/json | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["fullDisplayName"], "->", d["result"], "in", d["duration"], "ms")' ===
+HelloWorld #1 -> SUCCESS in 4240 ms
+
