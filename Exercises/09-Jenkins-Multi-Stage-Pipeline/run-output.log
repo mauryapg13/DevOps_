@@ -1,0 +1,275 @@
+### Step 3: app + Jenkinsfile pushed to https://github.com/mauryapg13/devops-sample-code
+=== git -C devops-sample-code log --oneline && git -C devops-sample-code ls-files ===
+b99437a Added Jenkinsfile
+7948d90 Add Python Flask app with unit test
+f69872d Add hello-world.sh
+Jenkinsfile
+app.py
+hello-world.sh
+requirements.txt
+test_app.py
+
+### Steps 4/6: Pipeline job 'Python-MultiStage-Pipeline' — Pipeline script from SCM (Git, */main, Jenkinsfile)
+=== jenkins-cli create-job Python-MultiStage-Pipeline < config.xml && echo created; jenkins-cli list-jobs ===
+created
+delivery-monitoring
+HelloWorld
+Python-MultiStage-Pipeline
+
+=== docker exec jenkins sh -c 'command -v python3 || echo "python3: not installed"' ===
+python3: not installed
+
+### Step 7: Build Now (#1) — before installing Python (Step 8's expected build error)
+=== jenkins-cli build Python-MultiStage-Pipeline -s -v | grep -vE '^ > git |^\[Pipeline\] (\}|//|\{$)' ===
+Started Python-MultiStage-Pipeline #1
+Started from command line by admin
+Obtained Jenkinsfile from git https://github.com/mauryapg13/devops-sample-code.git
+[Pipeline] Start of Pipeline
+[Pipeline] node
+Running on Jenkins in /var/jenkins_home/workspace/Python-MultiStage-Pipeline
+[Pipeline] stage
+[Pipeline] { (Declarative: Checkout SCM)
+[Pipeline] checkout
+Selected Git installation does not exist. Using Default
+The recommended git tool is: NONE
+No credentials specified
+Cloning the remote Git repository
+Cloning repository https://github.com/mauryapg13/devops-sample-code.git
+Fetching upstream changes from https://github.com/mauryapg13/devops-sample-code.git
+Avoid second fetch
+Checking out Revision b99437afbb173c9bfe677064db93adb9cdfcd821 (refs/remotes/origin/main)
+Commit message: "Added Jenkinsfile"
+First time build. Skipping changelog.
+[Pipeline] withEnv
+[Pipeline] withEnv
+[Pipeline] stage
+[Pipeline] { (Build)
+[Pipeline] echo
+Creating virtual environment and installing dependencies...
+[Pipeline] sh
++ python3 -m venv /var/jenkins_home/workspace/Python-MultiStage-Pipeline/venv
+/var/jenkins_home/workspace/Python-MultiStage-Pipeline@tmp/durable-1c4714f4/script.sh.copy: 2: python3: not found
+[Pipeline] stage
+[Pipeline] { (Code Quality)
+Stage "Code Quality" skipped due to earlier failure(s)
+[Pipeline] getContext
+[Pipeline] stage
+[Pipeline] { (Test)
+Stage "Test" skipped due to earlier failure(s)
+[Pipeline] getContext
+[Pipeline] stage
+[Pipeline] { (Deploy)
+Stage "Deploy" skipped due to earlier failure(s)
+[Pipeline] getContext
+[Pipeline] stage
+[Pipeline] { (Run Application)
+Stage "Run Application" skipped due to earlier failure(s)
+[Pipeline] getContext
+[Pipeline] stage
+[Pipeline] { (Test Application)
+Stage "Test Application" skipped due to earlier failure(s)
+[Pipeline] getContext
+[Pipeline] stage
+[Pipeline] { (Declarative: Post Actions)
+[Pipeline] echo
+Pipeline failed. Check the logs for more details.
+[Pipeline] End of Pipeline
+ERROR: script returned exit code 127
+Finished: FAILURE
+Completed Python-MultiStage-Pipeline #1 : FAILURE
+
+### Step 8: handle build errors — install Python inside the Jenkins container as root
+=== docker exec -u root jenkins sh -c 'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3 python3-pip python3-venv >/dev/null && python3 --version && python3 -m venv --help | head -1' ===
+Python 3.13.5
+usage: venv [-h] [--system-site-packages] [--symlinks | --copies] [--clear]
+
+### Step 7 again: Build Now (#2)
+=== jenkins-cli build Python-MultiStage-Pipeline -s -v | grep -vE '^ > git |^\[Pipeline\] (\}|//|\{$)' ===
+Started Python-MultiStage-Pipeline #2
+Started from command line by admin
+Obtained Jenkinsfile from git https://github.com/mauryapg13/devops-sample-code.git
+[Pipeline] Start of Pipeline
+[Pipeline] node
+Running on Jenkins in /var/jenkins_home/workspace/Python-MultiStage-Pipeline
+[Pipeline] stage
+[Pipeline] { (Declarative: Checkout SCM)
+[Pipeline] checkout
+Selected Git installation does not exist. Using Default
+The recommended git tool is: NONE
+No credentials specified
+Fetching changes from the remote Git repository
+Fetching upstream changes from https://github.com/mauryapg13/devops-sample-code.git
+Checking out Revision b99437afbb173c9bfe677064db93adb9cdfcd821 (refs/remotes/origin/main)
+Commit message: "Added Jenkinsfile"
+[Pipeline] withEnv
+[Pipeline] withEnv
+[Pipeline] stage
+[Pipeline] { (Build)
+[Pipeline] echo
+Creating virtual environment and installing dependencies...
+[Pipeline] sh
++ python3 -m venv /var/jenkins_home/workspace/Python-MultiStage-Pipeline/venv
++ /var/jenkins_home/workspace/Python-MultiStage-Pipeline/venv/bin/pip install --quiet -r requirements.txt flake8
++ /var/jenkins_home/workspace/Python-MultiStage-Pipeline/venv/bin/pip list
++ grep -iE ^(flask|werkzeug|flake8) 
+flake8       7.4.1
+Flask        2.1.2
+Werkzeug     2.1.2
+[Pipeline] stage
+[Pipeline] { (Code Quality)
+[Pipeline] echo
+Running code quality checks...
+[Pipeline] sh
++ /var/jenkins_home/workspace/Python-MultiStage-Pipeline/venv/bin/flake8 --exclude=venv --max-line-length=100 .
+./app.py:5:1: E302 expected 2 blank lines, found 1
+./app.py:9:1: E305 expected 2 blank lines after class or function definition, found 1
+./test_app.py:4:1: E302 expected 2 blank lines, found 1
+./test_app.py:12:1: E305 expected 2 blank lines after class or function definition, found 1
+[Pipeline] stage
+[Pipeline] { (Test)
+Stage "Test" skipped due to earlier failure(s)
+[Pipeline] getContext
+[Pipeline] stage
+[Pipeline] { (Deploy)
+Stage "Deploy" skipped due to earlier failure(s)
+[Pipeline] getContext
+[Pipeline] stage
+[Pipeline] { (Run Application)
+Stage "Run Application" skipped due to earlier failure(s)
+[Pipeline] getContext
+[Pipeline] stage
+[Pipeline] { (Test Application)
+Stage "Test Application" skipped due to earlier failure(s)
+[Pipeline] getContext
+[Pipeline] stage
+[Pipeline] { (Declarative: Post Actions)
+[Pipeline] echo
+Pipeline failed. Check the logs for more details.
+[Pipeline] End of Pipeline
+ERROR: script returned exit code 1
+Finished: FAILURE
+Completed Python-MultiStage-Pipeline #2 : FAILURE
+
+### Fix: flake8 gate caught E302/E305 in app.py/test_app.py; fixed and pushed
+=== git -C devops-sample-code show --stat --format='%h %s' HEAD ===
+ff5470a Fix flake8 E302/E305 blank-line warnings
+
+ app.py      | 2 ++
+ test_app.py | 2 ++
+ 2 files changed, 4 insertions(+)
+
+### Build Now (#3)
+=== jenkins-cli build Python-MultiStage-Pipeline -s -v | grep -vE '^ > git |^\[Pipeline\] (\}|//|\{$)' ===
+Started Python-MultiStage-Pipeline #3
+Started from command line by admin
+Obtained Jenkinsfile from git https://github.com/mauryapg13/devops-sample-code.git
+[Pipeline] Start of Pipeline
+[Pipeline] node
+Running on Jenkins in /var/jenkins_home/workspace/Python-MultiStage-Pipeline
+[Pipeline] stage
+[Pipeline] { (Declarative: Checkout SCM)
+[Pipeline] checkout
+Selected Git installation does not exist. Using Default
+The recommended git tool is: NONE
+No credentials specified
+Fetching changes from the remote Git repository
+Fetching upstream changes from https://github.com/mauryapg13/devops-sample-code.git
+Checking out Revision ff5470aaf6a80b6a72b14ae0283f35bb91075caf (refs/remotes/origin/main)
+Commit message: "Fix flake8 E302/E305 blank-line warnings"
+[Pipeline] withEnv
+[Pipeline] withEnv
+[Pipeline] stage
+[Pipeline] { (Build)
+[Pipeline] echo
+Creating virtual environment and installing dependencies...
+[Pipeline] sh
++ python3 -m venv /var/jenkins_home/workspace/Python-MultiStage-Pipeline/venv
++ /var/jenkins_home/workspace/Python-MultiStage-Pipeline/venv/bin/pip install --quiet -r requirements.txt flake8
++ /var/jenkins_home/workspace/Python-MultiStage-Pipeline/venv/bin/pip list
++ grep -iE ^(flask|werkzeug|flake8) 
+flake8       7.4.1
+Flask        2.1.2
+Werkzeug     2.1.2
+[Pipeline] stage
+[Pipeline] { (Code Quality)
+[Pipeline] echo
+Running code quality checks...
+[Pipeline] sh
++ /var/jenkins_home/workspace/Python-MultiStage-Pipeline/venv/bin/flake8 --exclude=venv --max-line-length=100 .
+[Pipeline] stage
+[Pipeline] { (Test)
+[Pipeline] echo
+Running tests...
+[Pipeline] sh
++ /var/jenkins_home/workspace/Python-MultiStage-Pipeline/venv/bin/python -m unittest discover -s . -v
+test_home (test_app.TestApp.test_home) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 0.009s
+
+OK
+Hello, Jenkins Multi-Stage Pipeline!
+[Pipeline] stage
+[Pipeline] { (Deploy)
+[Pipeline] echo
+Deploying application...
+[Pipeline] sh
++ mkdir -p /var/jenkins_home/workspace/Python-MultiStage-Pipeline/python-app-deploy
++ cp /var/jenkins_home/workspace/Python-MultiStage-Pipeline/app.py /var/jenkins_home/workspace/Python-MultiStage-Pipeline/python-app-deploy/
++ ls -l /var/jenkins_home/workspace/Python-MultiStage-Pipeline/python-app-deploy
+total 4
+-rw-r--r-- 1 jenkins jenkins 180 Oct 20 18:27 app.py
+[Pipeline] stage
+[Pipeline] { (Run Application)
+[Pipeline] echo
+Running application...
+[Pipeline] sh
++ [ -f /var/jenkins_home/workspace/Python-MultiStage-Pipeline/python-app-deploy/app.pid ]
++ true
++ echo 2632
++ JENKINS_NODE_COOKIE=dontKillMe nohup /var/jenkins_home/workspace/Python-MultiStage-Pipeline/venv/bin/python /var/jenkins_home/workspace/Python-MultiStage-Pipeline/python-app-deploy/app.py
++ cat /var/jenkins_home/workspace/Python-MultiStage-Pipeline/python-app-deploy/app.pid
++ echo started app with PID 2632
+started app with PID 2632
+[Pipeline] stage
+[Pipeline] { (Test Application)
+[Pipeline] echo
+Testing application...
+[Pipeline] sh
++ /var/jenkins_home/workspace/Python-MultiStage-Pipeline/venv/bin/python /var/jenkins_home/workspace/Python-MultiStage-Pipeline/test_app.py
+.
+----------------------------------------------------------------------
+Ran 1 test in 0.003s
+
+OK
+Hello, Jenkins Multi-Stage Pipeline!
++ seq 1 10
++ curl -sf http://127.0.0.1:5000/
+Hello, Jenkins Multi-Stage Pipeline!+ break
++ echo
+
++ curl -s -o /dev/null -w live app on :5000 -> HTTP %{http_code}\n http://127.0.0.1:5000/
+live app on :5000 -> HTTP 200
+[Pipeline] stage
+[Pipeline] { (Declarative: Post Actions)
+[Pipeline] echo
+Pipeline completed successfully!
+[Pipeline] End of Pipeline
+Finished: SUCCESS
+Completed Python-MultiStage-Pipeline #3 : SUCCESS
+
+=== docker exec jenkins sh -c 'ls -l /var/jenkins_home/workspace/Python-MultiStage-Pipeline/python-app-deploy; echo; curl -s http://127.0.0.1:5000/; echo; ps -o pid,args -p $(cat /var/jenkins_home/workspace/Python-MultiStage-Pipeline/python-app-deploy/app.pid)' ===
+total 12
+-rw-r--r-- 1 jenkins jenkins 467 Oct 20 18:27 app.log
+-rw-r--r-- 1 jenkins jenkins   5 Oct 20 18:27 app.pid
+-rw-r--r-- 1 jenkins jenkins 180 Oct 20 18:27 app.py
+
+Hello, Jenkins Multi-Stage Pipeline!
+  PID COMMAND
+ 2632 /var/jenkins_home/workspace/Python-MultiStage-Pipeline/venv/bin/python /var/jenkins_home/workspace/Python-MultiStage-Pipeline/python-app-deploy/app.py
+
+=== for b in 1 2 3; do curl -s -u admin:$JENKINS_PW http://localhost:8080/job/Python-MultiStage-Pipeline/$b/api/json | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["fullDisplayName"], "->", d["result"])'; done ===
+Python-MultiStage-Pipeline #1 -> FAILURE
+Python-MultiStage-Pipeline #2 -> FAILURE
+Python-MultiStage-Pipeline #3 -> SUCCESS
+
