@@ -1,0 +1,187 @@
+=== minikube start --nodes 3 -p devops-multinode --driver=docker --memory=1800 --cpus=2 --base-image=gcr.io/k8s-minikube/kicbase:v0.0.49 ===
+* [devops-multinode] minikube v1.38.1 on Darwin 26.4.1 (arm64)
+* Using the docker driver based on user configuration
+
+X Docker Desktop only has 7836MiB available, you may encounter application deployment failures.
+
+
+! Starting v1.39.0, minikube will default to "containerd" container runtime. See #21973 for more info.
+* Using Docker Desktop driver with root privileges
+* Starting "devops-multinode" primary control-plane node in "devops-multinode" cluster
+* Pulling base image v0.0.50 ...
+* Configuring CNI (Container Networking Interface) ...
+* Verifying Kubernetes components...
+  - Using image gcr.io/k8s-minikube/storage-provisioner:v5
+* Enabled addons: storage-provisioner, default-storageclass
+
+* Starting "devops-multinode-m02" worker node in "devops-multinode" cluster
+* Pulling base image v0.0.50 ...
+* Found network options:
+  - NO_PROXY=192.168.49.2
+  - env NO_PROXY=192.168.49.2
+* Verifying Kubernetes components...
+
+* Starting "devops-multinode-m03" worker node in "devops-multinode" cluster
+* Pulling base image v0.0.50 ...
+* Found network options:
+  - NO_PROXY=192.168.49.2,192.168.49.3
+  - env NO_PROXY=192.168.49.2
+  - env NO_PROXY=192.168.49.2,192.168.49.3
+* Verifying Kubernetes components...
+* Done! kubectl is now configured to use "devops-multinode" cluster and "default" namespace by default
+exit=0
+
+=== kubectl get nodes -o wide ===
+NAME                   STATUS     ROLES           AGE   VERSION   INTERNAL-IP    EXTERNAL-IP   OS-IMAGE                         KERNEL-VERSION     CONTAINER-RUNTIME
+devops-multinode       Ready      control-plane   43s   v1.35.1   192.168.49.2   <none>        Debian GNU/Linux 12 (bookworm)   6.12.76-linuxkit   docker://29.2.0
+devops-multinode-m02   Ready      <none>          28s   v1.35.1   192.168.49.3   <none>        Debian GNU/Linux 12 (bookworm)   6.12.76-linuxkit   docker://29.2.0
+devops-multinode-m03   NotReady   <none>          15s   v1.35.1   192.168.49.4   <none>        Debian GNU/Linux 12 (bookworm)   6.12.76-linuxkit   docker://29.2.0
+
+### Step 4: build images
+=== docker build -q -t product-catalog:latest -f Dockerfile.product . ===
+sha256:16c0eba61b30d4c141422a6d340e1f9e8aaaac3892902dd75ea041986f840564
+
+=== docker build -q -t shopping-cart:latest -f Dockerfile.shopping . ===
+sha256:423baf1df45ff43971333f402553c4cef0262192272c0cd89ec3e5da7686c252
+
+=== docker images --format 'table {{.Repository}}	{{.Tag}}	{{.ID}}	{{.Size}}' | grep -E 'REPOSITORY|product-catalog|shopping-cart' ===
+REPOSITORY                    TAG       IMAGE ID       SIZE
+shopping-cart                 latest    423baf1df45f   228MB
+product-catalog               latest    16c0eba61b30   228MB
+
+### Step 5: load images into every node
+=== minikube -p devops-multinode image load product-catalog:latest ===
+
+=== minikube -p devops-multinode image load shopping-cart:latest ===
+
+=== for n in devops-multinode devops-multinode-m02 devops-multinode-m03; do echo "[$n]"; minikube -p devops-multinode ssh -n $n -- docker images --format '{{.Repository}}:{{.Tag}}' | grep -E 'product-catalog|shopping-cart'; done ===
+[devops-multinode]
+shopping-cart:latest
+product-catalog:latest
+[devops-multinode-m02]
+shopping-cart:latest
+product-catalog:latest
+[devops-multinode-m03]
+shopping-cart:latest
+product-catalog:latest
+
+### Steps 6-7: deploy and expose
+=== kubectl apply -f product_catalog_deployment.yaml -f shopping_cart_deployment.yaml ===
+deployment.apps/product-catalog created
+deployment.apps/shopping-cart created
+
+=== kubectl apply -f product_catalog_service.yaml -f shopping_cart_service.yaml ===
+service/product-catalog-service created
+service/shopping-cart-service created
+
+=== kubectl rollout status deploy/product-catalog --timeout=180s && kubectl rollout status deploy/shopping-cart --timeout=180s ===
+Waiting for deployment "product-catalog" rollout to finish: 0 of 2 updated replicas are available...
+Waiting for deployment "product-catalog" rollout to finish: 1 of 2 updated replicas are available...
+deployment "product-catalog" successfully rolled out
+deployment "shopping-cart" successfully rolled out
+
+### Step 8: verify distribution
+=== kubectl get pods -o wide ===
+NAME                               READY   STATUS    RESTARTS   AGE   IP           NODE                   NOMINATED NODE   READINESS GATES
+product-catalog-6794cdc954-4nmgt   1/1     Running   0          2s    10.244.2.5   devops-multinode-m03   <none>           <none>
+product-catalog-6794cdc954-nsxdb   1/1     Running   0          2s    10.244.1.5   devops-multinode-m02   <none>           <none>
+shopping-cart-7bf585c6f8-d6kqd     1/1     Running   0          2s    10.244.2.4   devops-multinode-m03   <none>           <none>
+shopping-cart-7bf585c6f8-kkh7b     1/1     Running   0          2s    10.244.0.4   devops-multinode       <none>           <none>
+shopping-cart-7bf585c6f8-nwz4c     1/1     Running   0          2s    10.244.1.4   devops-multinode-m02   <none>           <none>
+
+=== kubectl get pods -o custom-columns=APP:.metadata.labels.app,NODE:.spec.nodeName --no-headers | sort | uniq -c ===
+   1 product-catalog   devops-multinode-m02
+   1 product-catalog   devops-multinode-m03
+   1 shopping-cart     devops-multinode
+   1 shopping-cart     devops-multinode-m02
+   1 shopping-cart     devops-multinode-m03
+
+=== kubectl get deploy,rs,svc ===
+NAME                              READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/product-catalog   2/2     2            2           2s
+deployment.apps/shopping-cart     3/3     3            3           2s
+
+NAME                                         DESIRED   CURRENT   READY   AGE
+replicaset.apps/product-catalog-6794cdc954   2         2         2       2s
+replicaset.apps/shopping-cart-7bf585c6f8     3         3         3       2s
+
+NAME                              TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)        AGE
+service/kubernetes                ClusterIP   10.96.0.1        <none>        443/TCP        8m8s
+service/product-catalog-service   NodePort    10.99.55.52      <none>        80:31943/TCP   2s
+service/shopping-cart-service     NodePort    10.108.153.154   <none>        80:31901/TCP   2s
+
+### Step 9: minikube service tunnels (Docker driver on macOS: the tunnel process must stay running)
+=== echo 'minikube -p devops-multinode service product-catalog-service --url -> http://127.0.0.1:50687'; echo 'minikube -p devops-multinode service shopping-cart-service --url   -> http://127.0.0.1:50686' ===
+minikube -p devops-multinode service product-catalog-service --url -> http://127.0.0.1:50687
+minikube -p devops-multinode service shopping-cart-service --url   -> http://127.0.0.1:50686
+
+### Step 10: test with curl
+=== curl -s http://127.0.0.1:50687/products ===
+[{"id":1,"name":"Laptop","price":1200},{"id":2,"name":"Phone","price":800},{"id":3,"name":"Headphones","price":150}]
+
+=== curl -s http://127.0.0.1:50686/cart ===
+[]
+
+=== curl -s -X POST http://127.0.0.1:50686/cart -H 'Content-Type: application/json' -d '{"id": 1, "name": "Laptop", "quantity": 1}' ===
+[{"id":1,"name":"Laptop","quantity":1}]
+
+### Extra: cart state is in-memory per pod — repeated GETs after one POST
+=== for i in $(seq 1 9); do curl -s http://127.0.0.1:50686/cart; echo; done | sort | uniq -c ===
+   6 []
+   3 [{"id":1,"name":"Laptop","quantity":1}]
+
+=== for p in $(kubectl get pods -l app=shopping-cart -o name); do printf '%-40s %-22s %s
+' $p $(kubectl get $p -o jsonpath='{.spec.nodeName}') "$(kubectl exec $p -- python -c 'import urllib.request;print(urllib.request.urlopen("http://localhost/cart").read().decode().strip())')"; done ===
+pod/shopping-cart-7bf585c6f8-d6kqd       devops-multinode-m03   [{"id":1,"name":"Laptop","quantity":1}]
+pod/shopping-cart-7bf585c6f8-kkh7b       devops-multinode       []
+pod/shopping-cart-7bf585c6f8-nwz4c       devops-multinode-m02   []
+
+### Extra: node failure — drain devops-multinode-m03
+=== kubectl drain devops-multinode-m03 --ignore-daemonsets --delete-emptydir-data --timeout=90s ===
+node/devops-multinode-m03 cordoned
+Warning: ignoring DaemonSet-managed Pods: kube-system/kindnet-zvp48, kube-system/kube-proxy-jsdf9
+evicting pod default/shopping-cart-7bf585c6f8-d6kqd
+evicting pod default/product-catalog-6794cdc954-4nmgt
+pod/product-catalog-6794cdc954-4nmgt evicted
+pod/shopping-cart-7bf585c6f8-d6kqd evicted
+node/devops-multinode-m03 drained
+
+=== kubectl get pods -o wide ===
+NAME                               READY   STATUS    RESTARTS   AGE   IP           NODE                   NOMINATED NODE   READINESS GATES
+product-catalog-6794cdc954-fc4s5   1/1     Running   0          36s   10.244.0.5   devops-multinode       <none>           <none>
+product-catalog-6794cdc954-nsxdb   1/1     Running   0          66s   10.244.1.5   devops-multinode-m02   <none>           <none>
+shopping-cart-7bf585c6f8-kkh7b     1/1     Running   0          66s   10.244.0.4   devops-multinode       <none>           <none>
+shopping-cart-7bf585c6f8-nwz4c     1/1     Running   0          66s   10.244.1.4   devops-multinode-m02   <none>           <none>
+shopping-cart-7bf585c6f8-q4pzl     0/1     Pending   0          36s   <none>       <none>                 <none>           <none>
+
+=== kubectl get deploy ===
+NAME              READY   UP-TO-DATE   AVAILABLE   AGE
+product-catalog   2/2     2            2           66s
+shopping-cart     2/3     3            2           66s
+
+=== kubectl get events --field-selector reason=FailedScheduling -o custom-columns=OBJ:.involvedObject.name,MSG:.message --no-headers | grep shopping-cart ===
+shopping-cart-7bf585c6f8-q4pzl   0/3 nodes are available: 1 node(s) had untolerated taint(s), 2 node(s) didn't match pod anti-affinity rules. no new claims to deallocate, preemption: 0/3 nodes are available: 1 Preemption is not helpful for scheduling, 2 No preemption victims found for incoming pod.
+
+=== curl -s -o /dev/null -w 'products -> HTTP %{http_code}
+' http://127.0.0.1:50687/products; curl -s -o /dev/null -w 'cart     -> HTTP %{http_code}
+' http://127.0.0.1:50686/cart ===
+products -> HTTP 200
+cart     -> HTTP 200
+
+### Node recovers — uncordon
+=== kubectl uncordon devops-multinode-m03 ===
+node/devops-multinode-m03 uncordoned
+
+=== kubectl rollout status deploy/shopping-cart --timeout=120s && kubectl rollout status deploy/product-catalog --timeout=120s ===
+Waiting for deployment "shopping-cart" rollout to finish: 2 of 3 updated replicas are available...
+deployment "shopping-cart" successfully rolled out
+deployment "product-catalog" successfully rolled out
+
+=== kubectl get pods -o wide ===
+NAME                               READY   STATUS    RESTARTS   AGE   IP           NODE                   NOMINATED NODE   READINESS GATES
+product-catalog-6794cdc954-fc4s5   1/1     Running   0          38s   10.244.0.5   devops-multinode       <none>           <none>
+product-catalog-6794cdc954-nsxdb   1/1     Running   0          68s   10.244.1.5   devops-multinode-m02   <none>           <none>
+shopping-cart-7bf585c6f8-kkh7b     1/1     Running   0          68s   10.244.0.4   devops-multinode       <none>           <none>
+shopping-cart-7bf585c6f8-nwz4c     1/1     Running   0          68s   10.244.1.4   devops-multinode-m02   <none>           <none>
+shopping-cart-7bf585c6f8-q4pzl     1/1     Running   0          38s   10.244.2.6   devops-multinode-m03   <none>           <none>
+
